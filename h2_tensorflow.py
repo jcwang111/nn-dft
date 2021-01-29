@@ -89,9 +89,10 @@ nuclear_energy = utils.get_nuclear_interaction_energy_batch(
 
 plt.plot(data.distances, data.total_energies+nuclear_energy, linestyle='dashed', color='black', label='Exact')
 plt.plot(data.distances, train_energies+nuclear_energy, color='purple', label='Network trained on distance=1.28 and 3.84')
+plt.plot(data.distances[mask], (train_energies+nuclear_energy)[mask], marker='D', linestyle='None')
 
 plt.xlabel('Distance')
-plt.ylabel('Energy')
+plt.ylabel('Total Energy + E_nn')
 plt.legend()
 #plt.savefig("h2_NN_prediction.png")
 plt.show()
