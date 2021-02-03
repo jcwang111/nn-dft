@@ -53,7 +53,7 @@ class ExponentialGlobalConv(tf.keras.layers.Layer):
 
 data = datasets.Dataset(path='data/h2/', num_grids=513)
 
-model = tf.keras.Sequential([
+'''model = tf.keras.Sequential([
     ExponentialGlobalConv(16,min_xi=0.1,max_xi=2.385345,dx=0.08,grids=data.grids),
     tf.keras.layers.Conv1D(
         filters=16, kernel_size=3, strides=1, padding='same',
@@ -69,7 +69,13 @@ model = tf.keras.Sequential([
     tf.keras.layers.Flatten(),
     tf.keras.layers.Dense(128, activation='swish'),
     tf.keras.layers.Dense(1)
+])'''
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(8, activation='sigmoid'),
+    tf.keras.layers.Dense(1)
 ])
+
 # "swish" AKA SiLU activation function = x*sigmoid(x)
 
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
@@ -77,7 +83,8 @@ model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
 
 train_distances = [128, 384]
 mask = np.isin(data.distances_x100, train_distances)
-model.fit(data.densities[mask,:], data.total_energies[mask], epochs = 100)
+#model.fit(data.densities[mask,:], data.total_energies[mask], epochs = 100)
+model.fit(data.densities, data.total_energies, epochs = 300)
 print(model.summary())
 #model.save("h2_ml_model")
 train_energies = tf.reshape(model(data.densities), -1)
@@ -89,7 +96,7 @@ nuclear_energy = utils.get_nuclear_interaction_energy_batch(
 
 plt.plot(data.distances, data.total_energies+nuclear_energy, linestyle='dashed', color='black', label='Exact')
 plt.plot(data.distances, train_energies+nuclear_energy, color='purple', label='Network trained on distance=1.28 and 3.84')
-plt.plot(data.distances[mask], (train_energies+nuclear_energy)[mask], marker='D', linestyle='None')
+#plt.plot(data.distances[mask], (train_energies+nuclear_energy)[mask], marker='D', linestyle='None')
 
 plt.xlabel('Distance')
 plt.ylabel('Total Energy + E_nn')
