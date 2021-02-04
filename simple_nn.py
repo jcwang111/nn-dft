@@ -108,7 +108,7 @@ class OneLayerNN():
 data = datasets.Dataset(path='data/h2/', num_grids=513)
 densities = data.densities
 
-nn1 = OneLayerNN((513, 12, 12, 1), SiLU, SiLU_prime)
+nn1 = OneLayerNN((513, 12, 12, 12, 1), SiLU, SiLU_prime)
 nn1.train(densities, data.total_energies, 0.4, 1000, True)
 nn1_energies = nn1(densities).reshape(-1)
 
