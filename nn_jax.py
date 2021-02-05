@@ -52,40 +52,40 @@ validation_distances = [296]
 validation_mask = jnp.isin(data.distances_x100, validation_distances) #Only train at 1.28 and 3.84
 
 #Hyperparameters
-#init_key = random.PRNGKey(3) #parameter seed
-layers = (513, 15, 15, 15, 1) #network structure
-#eta = 0.04 #training rate
-act_func = softplus #activation function
+init_key = random.PRNGKey(5) #parameter seed
+layers = (513, 10, 10, 10, 1) #network structure
+eta = 0.5 #training rate
+act_func = silu #activation function
 epochs = 800 #number of training epochs
 
 #Cross_validate
-seeds = [0, 1, 2, 3, 4, 5]
-etas = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
+#seeds = [0, 1, 2, 3, 4, 5]
+#etas = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
 
-best_stats = {}
-best_valid_error = jnp.inf
-for eta in etas:
-    for seed in seeds:
-        init_key = random.PRNGKey(seed)
-        params = init_network_params(layers, init_key)
-        for i in range(epochs):
-            params = grad_descent_update(params, densities[train_mask,:], total_energies[train_mask], eta)
-            #if i%300==0:
-                #print('Training Cost:', L2_cost(params, densities[train_mask,:], total_energies[train_mask]))
+#best_stats = {}
+#best_valid_error = jnp.inf
+#for eta in etas:
+#    for seed in seeds:
+#       init_key = random.PRNGKey(seed)
+params = init_network_params(layers, init_key)
+for i in range(epochs):
+    params = grad_descent_update(params, densities[train_mask,:], total_energies[train_mask], eta)
+    if i%200==0:
         print('Training Cost:', L2_cost(params, densities[train_mask,:], total_energies[train_mask]))
-        print('Validation Cost:', L2_cost(params, densities[validation_mask,:], total_energies[validation_mask]))
-        train_cost = L2_cost(params, densities[train_mask,:], total_energies[train_mask])
-        valid_cost = L2_cost(params, densities[validation_mask,:], total_energies[validation_mask])
-        if valid_cost < best_valid_error:
-            best_valid_error = valid_cost
-            best_stats = {'seed':seed, 'eta':eta, 'train_cost':train_cost, 'valid_cost':valid_cost}
+print('Training Cost:', L2_cost(params, densities[train_mask,:], total_energies[train_mask]))
+print('Validation Cost:', L2_cost(params, densities[validation_mask,:], total_energies[validation_mask]))
+#train_cost = L2_cost(params, densities[train_mask,:], total_energies[train_mask])
+#valid_cost = L2_cost(params, densities[validation_mask,:], total_energies[validation_mask])
+#if valid_cost < best_valid_error:
+#    best_valid_error = valid_cost
+#    best_stats = {'seed':seed, 'eta':eta, 'train_cost':train_cost, 'valid_cost':valid_cost}
 
-print("------------------------")
-print("Best hyperparameters:")
-for k, v in best_stats.items():
-    print(k,':',v)
+#print("------------------------")
+#print("Best hyperparameters:")
+#for k, v in best_stats.items():
+#    print(k,':',v)
 
-'''result_energies = batch_predict(params, densities)
+result_energies = batch_predict(params, densities)
 
 #Nuclear-nuclear repulsion energy, from the 1D exponential interaction
 nuclear_energy = utils.get_nuclear_interaction_energy_batch(
@@ -95,7 +95,7 @@ nuclear_energy = utils.get_nuclear_interaction_energy_batch(
 
 
 plt.plot(data.distances, nuclear_energy+total_energies, linestyle='dashed', color='black', label='Exact')
-plt.plot(data.distances, nuclear_energy+result_energies, color='purple', label='Neural network trained on d=1.28 and 3.84')
+plt.plot(data.distances, nuclear_energy+result_energies, color='green', label='Network trained on samples D=1.28 and D=3.84')
 plt.plot(data.distances[train_mask], (nuclear_energy+total_energies)[train_mask], marker='D', linestyle='None')
 plt.plot(data.distances[validation_mask], (nuclear_energy+total_energies)[validation_mask], marker='^', linestyle='None')
 plt.plot()
@@ -103,4 +103,4 @@ plt.xlabel('Distance')
 plt.ylabel('$E + E_{nn}$')
 plt.legend()
 
-plt.show()'''
+plt.show()
