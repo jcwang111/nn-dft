@@ -6,10 +6,12 @@ from jax import grad, jit, vmap
 from jax import random
 from jax.nn import sigmoid, relu, softplus, silu, elu
 from jax.scipy import optimize
-
+import numpy as np
+import scipy
 import matplotlib.pyplot as plt
 from jax_dft import datasets
 from jax_dft import utils
+from jax_dft import np_utils
 
 from pureML_layers import *
 
@@ -67,6 +69,8 @@ train_mask = jnp.isin(data.distances_x100, train_distances) #Only train at 1.28 
 validation_distances = [296]
 validation_mask = jnp.isin(data.distances_x100, validation_distances) #Only train at 1.28 and 3.84
 
+train_densities = densities[train_mask,:]
+train_energies = total_energies[train_mask]
 #Hyperparameters: seed=1 and eta=0.1 are optimal from cross-validation
 seed = 1 #parameter seed
 eta = 0.1 #training rate
@@ -82,12 +86,30 @@ epochs = 1000 #number of training epochs
 #    for seed in seeds:
 init_key = random.PRNGKey(seed)
 params = init_params(init_key)
-for i in range(epochs):
+'''for i in range(epochs):
     params = grad_descent_update(params, densities[train_mask,:], total_energies[train_mask], eta)
     if i%10==0:
-        print('Training Cost:', MSE_Loss(params, densities[train_mask,:], total_energies[train_mask]))
-print('Training Cost:', MSE_Loss(params, densities[train_mask,:], total_energies[train_mask]))
-print('Validation Cost:', MSE_Loss(params, densities[validation_mask,:], total_energies[validation_mask]))
+        print('Training Cost:', MSE_Loss(params, densities[train_mask,:], total_energies[train_mask]))'''
+
+spec, flatten_init_params = np_utils.flatten(params) 
+grad_MSE = grad(MSE_Loss)
+
+def flatten_fn_grad(flatten_params):
+    params = np_utils.unflatten(spec, flatten_params)
+    return MSE_Loss(params, train_densities, train_energies), np_utils.flatten(grad_MSE(params, train_densities, train_energies))[1]
+
+final_params, training_cost, info = scipy.optimize.fmin_l_bfgs_b(
+    flatten_fn_grad,
+    x0=np.array(flatten_init_params),
+    # Maximum number of function evaluations.
+    maxfun=epochs,
+    factr=1,
+    m=20,
+    pgtol=1e-14)
+
+params = np_utils.unflatten(spec, final_params)
+print(training_cost)
+
 #train_cost = MSE_Loss(params, densities[train_mask,:], total_energies[train_mask])
 #valid_cost = MSE_Loss(params, densities[validation_mask,:], total_energies[validation_mask])
 #if valid_cost < best_valid_error:
@@ -99,6 +121,8 @@ print('Validation Cost:', MSE_Loss(params, densities[validation_mask,:], total_e
 #for k, v in best_stats.items():
 #    print(k,':',v)
 
+print('Training Cost:', MSE_Loss(params, densities[train_mask,:], total_energies[train_mask]))
+print('Validation Cost:', MSE_Loss(params, densities[validation_mask,:], total_energies[validation_mask]))
 result_energies = predict(params, densities)
 
 #Nuclear-nuclear repulsion energy, from the 1D exponential interaction
