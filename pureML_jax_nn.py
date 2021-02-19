@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jax import grad, jit, vmap
 from jax import random
 from jax.nn import sigmoid, relu, softplus, silu, elu
-from jax.scipy import optimize
+from jax import scipy
 import numpy as np
 import matplotlib.pyplot as plt
 from jax_dft import datasets
@@ -61,7 +61,7 @@ def grad_descent_update(params, batch_x, batch_y, eta):
     
     grads = grad(MSE_Loss)(params, batch_x, batch_y)
     return [w - eta*dw if not type(w) is tuple 
-            else (w[0]-eta*dw[0], w[1]-eta*dw[1]) #Handle dense layer case, two parameter arrays
+            else (w[0]-eta*dw[0], w[1]-eta*dw[1]) #Handle dense layer case, two arrays w and b
                 for w, dw in zip(params, grads)]
 
 train_distances = [128, 384]
@@ -74,66 +74,78 @@ train_energies = total_energies[train_mask]
 valid_densities = densities[validation_mask,:]
 valid_energies = total_energies[validation_mask]
 
-#Hyperparameters
-#init_key = random.PRNGKey(1) #parameter seed
-#eta = 0.1 #training rate
-epochs = 20 #number of training epochs
+def train_and_return(eta, init_key):
+    """ Initializes a new model, trains it, and returns results.
+    Args:
+        eta: training rate
+        init_key: jnp array (2,), a PRNGKey()
+    Returns:
+        dict containing:
+            params: list of trained parameter arrays
+            train_loss: float, final training cost
+            valid_loss: float, final validation cost
+            eta: eta argument
+            seed: init_key argument
+            loss_record: (parameters, step number) for every 10th BFGS step
+            num_steps: number of BFGS iterations taken
+    """
 
-#Cross_validate
-seeds = random.split(random.PRNGKey(68000), 50)
-#etas = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0]
+    params = init_params(init_key)
+    spec, flat_init_params = np_utils.flatten(params) 
+    grad_MSE = grad(MSE_Loss)
 
-best_stats = {}
-best_valid_error = [np.inf]
-best_valid_params = {'params':None, 'seed':None, 'valid_cost':None, 'calls': 0}
-#for eta in etas:
-#for init_key in seeds:
-init_key = np.array([3483222781, 1411702757], dtype=np.uint32)
-params = init_params(init_key)
-spec, flatten_init_params = np_utils.flatten(params) 
-grad_MSE = grad(MSE_Loss)
+    loss_record = []
+    def loss_grad_fn(flat_params):
+        unflat_params = np_utils.unflatten(spec, flat_params)
 
-calls = [0]
-def flatten_fn_grad(flatten_params):
-    unflat_params = np_utils.unflatten(spec, flatten_params)
-    valid_loss = MSE_Loss(unflat_params, valid_densities, valid_energies)
-    calls[0] += 1
-    if valid_loss < best_valid_error[0]:
-        best_valid_error[0] = valid_loss
-        best_valid_params['params'] = unflat_params
-        best_valid_params['seed'] = init_key
-        best_valid_params['valid_cost'] = valid_loss
-        best_valid_params['calls'] = calls[0]
+        loss_grad_fn.step += 1
+        #if loss_grad_fn.step % 10 == 0: #Save checkpoint every 10
+            #valid_loss = MSE_Loss(unflat_params, valid_densities, valid_energies)
+            #loss_record.append((unflat_params, loss_grad_fn.step))
 
-    return MSE_Loss(unflat_params, train_densities, train_energies), np_utils.flatten(grad_MSE(unflat_params, train_densities, train_energies))[1]
+        return MSE_Loss(unflat_params, train_densities, train_energies), np_utils.flatten(grad_MSE(unflat_params, train_densities, train_energies))[1]
+            
+    loss_grad_fn.step = 0
 
-final_params, train_cost, info = scipy.optimize.fmin_l_bfgs_b(
-    flatten_fn_grad,
-    x0=np.array(flatten_init_params),
-    # Maximum number of function evaluations.
-    maxfun=epochs,
-    factr=1,
-    m=20,
-    pgtol=1e-14)
+    print(flat_init_params.shape)
+    epochs = 20
+    final_params, train_cost, info = scipy.optimize.fmin_l_bfgs_b(
+                loss_grad_fn,
+                x0=np.array(flat_init_params),
+                # Maximum number of function evaluations.
+                maxfun=epochs,
+                factr=1,
+                m=20,
+                pgtol=1e-14)
+    
+    params = np_utils.unflatten(spec, result.x)
+    valid_loss = MSE_Loss(params, valid_densities, valid_energies)
 
-params = np_utils.unflatten(spec, final_params)
+    print('Training Cost:', train_cost)
+    print('Validation Cost:', valid_loss)
+    return {'params':params, 'train_loss':train_cost, 'valid_loss':valid_loss, 'eta':eta, 'seed':init_key,
+            'loss_record':loss_record, 'num_steps':loss_grad_fn.step}
 
-print('Training Cost:', MSE_Loss(params, densities[train_mask,:], total_energies[train_mask]))
-print('Validation Cost:', MSE_Loss(params, densities[validation_mask,:], total_energies[validation_mask]))
-'''valid_cost = MSE_Loss(params, densities[validation_mask,:], total_energies[validation_mask])
-    if valid_cost < best_valid_error:
-        best_valid_error = valid_cost
-        best_stats = {'seed':init_key, 'info':info, 'train_cost':train_cost, 'valid_cost':valid_cost}'''
+#Cross validation
+seeds = random.split(random.PRNGKey(68000), 30)
+etas = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0]
 
-#print("------------------------")
-#print("Best hyperparameters:")
-#for k, v in best_stats.items():
-#    print(k,':',v)
+best_valid_loss = jnp.inf
+best_result = None
+for eta in etas:
+    for init_key in seeds:
+        result = train_and_return(eta, init_key)
+        if result['valid_loss'] < best_valid_loss:
+            best_result = result
 
-print(best_valid_params)
+print("------------------------")
+print("Best hyperparameters:")
+for k, v in best_stats.items():
+    if k != 'params' and k != 'loss_record':
+        print(k,':',v)
+
+
 params = best_valid_params['params']
-print('Training Cost:', MSE_Loss(best_valid_params['params'], densities[train_mask,:], total_energies[train_mask]))
-print('Validation Cost:', MSE_Loss(best_valid_params['params'], densities[validation_mask,:], total_energies[validation_mask]))
 result_energies = predict(params, densities)
 
 #Nuclear-nuclear repulsion energy, from the 1D exponential interaction
@@ -142,7 +154,6 @@ nuclear_energy = utils.get_nuclear_interaction_energy_batch(
     data.nuclear_charges,
     interaction_fn=utils.exponential_coulomb)
 
-
 plt.plot(data.distances, nuclear_energy+total_energies, linestyle='dashed', color='black', label='Exact')
 plt.plot(data.distances, nuclear_energy+result_energies, color='purple', label='Training point with lowest validation cost')
 plt.plot(data.distances[train_mask], (nuclear_energy+total_energies)[train_mask], marker='D', linestyle='None')
@@ -150,6 +161,6 @@ plt.plot(data.distances[validation_mask], (nuclear_energy+total_energies)[valida
 
 plt.xlabel('Distance')
 plt.ylabel('$E + E_{nn}$')
-#plt.legend()
+plt.legend()
 
 plt.show()
